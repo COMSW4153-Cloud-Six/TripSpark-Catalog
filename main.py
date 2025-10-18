@@ -18,7 +18,6 @@ from models.health import Health
 # MySQL connectivity to display the data in catalog table
 # -----------------------------------------------------------------------------
 
-#On AWS VM
 import mysql.connector
 
 DB_CONFIG = {
@@ -68,20 +67,13 @@ def fetch_places():
 
 port = int(os.environ.get("FASTAPIPORT", 8000))
 
-# -----------------------------------------------------------------------------
-# Fake in-memory "databases"
-# -----------------------------------------------------------------------------
-catalogs: Dict[int, CatalogRead] = {}
+#catalogs: Dict[int, CatalogRead] = {}
 
 app = FastAPI(
     title="TripSpark - Catalog API",
     description="FastAPI app using Pydantic v2 models for TripSpark - Catalog",
     version="0.1.0",
 )
-
-# -----------------------------------------------------------------------------
-# Catalog endpoints
-# -----------------------------------------------------------------------------
 
 def make_health(echo: Optional[str], path_echo: Optional[str]=None) -> Health:
     return Health(
@@ -105,12 +97,11 @@ def get_health_with_path(
 ):
     return make_health(echo=echo, path_echo=path_echo)
 
-'''@app.post("/catalogs", response_model=CatalogRead, status_code=201)
-def create_catalog(catalog: CatalogCreate):
-    if catalog.id in catalogs:
-        raise HTTPException(status_code=400, detail="Catalog with this ID already exists")
-    catalogs[catalog.id] = CatalogRead(**catalog.model_dump())
-    return catalogs[catalog.id]'''
+
+
+# -----------------------------------------------------------------------------
+# Catalog endpoints
+# -----------------------------------------------------------------------------
 
 
 @app.post("/catalogs", response_model=CatalogRead, status_code=201)
@@ -166,69 +157,6 @@ def create_catalog(catalog: CatalogCreate):
         if cnx and cnx.is_connected():
             cnx.close()
 
-
-'''@app.get("/catalogs", response_model=List[CatalogRead])
-def list_catalogs(
-    name: Optional[str] = Query(None, description="Filter by city"),
-    country: Optional[str] = Query(None, description="Filter by country"),
-    currency: Optional[str] = Query(None, description="Filter by currency"),
-    lat: Optional[float] = Query(None, description="Filter by latitude"),
-    lon: Optional[float] = Query(None, description="Filter by longitude"),
-    rating_avg: Optional[float] = Query(None, description="Filter by rating"),
-    description: Optional[str] = Query(None, description="Filter by description"),
-    vibe: Optional[str] = Query(None, description="Filter by vibe"),
-    budget: Optional[str] = Query(None, description="Filter by budget"),
-    poi: Optional[str] = Query(None, description="Filter by place of interest"),
-):
-    results = list(catalogs.values())
-
-    if name is not None:
-        results = [a for a in results if a.name == name]
-    if currency is not None:
-        results = [a for a in results if a.currency == currency]
-    if lat is not None:
-        results = [a for a in results if a.lat == lat]
-    if lon is not None:
-        results = [a for a in results if a.lon == lon]
-    if country is not None:
-        results = [a for a in results if a.country == country]
-    if rating_avg is not None:
-        results = [a for a in results if a.rating_avg == rating_avg]
-    if description is not None:
-        results = [a for a in results if a.description == description]
-    if vibe is not None:
-        results = [a for a in results if a.vibe == vibe]
-    if budget is not None:
-        results = [a for a in results if a.budget == budget]
-    if poi is not None:
-        results = [a for a in results if a.poi == poi]
-
-    ## select query in mysql to display all data from database
-    fetch_places()
-
-    return results
-
-
-@app.get("/catalogs", response_model=List[CatalogRead])
-def list_catalogs():
-    """Fetch all records from catalog table."""
-    cnx = None
-    cursor = None
-    try:
-        cnx = get_connection()
-        cursor = cnx.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM catalog")
-        rows = cursor.fetchall()
-        return rows
-    except Exception as err:
-        print(f"MySQL error: {err}")
-        raise HTTPException(status_code=500, detail="Failed to fetch catalog data")
-    finally:
-        if cursor:
-            cursor.close()
-        if cnx and cnx.is_connected():
-            cnx.close()
-'''
 
 @app.get("/catalogs", response_model=List[CatalogRead])
 def list_catalogs(
@@ -310,12 +238,6 @@ def list_catalogs(
             cnx.close()
 
 
-'''@app.get("/catalogs/{catalog_id}", response_model=CatalogRead)
-def get_catalog(catalog_id: int):
-    if catalog_id not in catalogs:
-        raise HTTPException(status_code=404, detail="Catalog not found")
-    return catalogs[catalog_id]'''
-
 @app.get("/catalogs/{catalog_id}", response_model=CatalogRead)
 def get_catalog(catalog_id: int):
     """
@@ -351,14 +273,6 @@ def get_catalog(catalog_id: int):
             cnx.close()
 
 
-'''@app.patch("/catalogs/{catalog_id}", response_model=CatalogRead)
-def update_catalog(catalog_id: int, update: CatalogUpdate):
-    if catalog_id not in catalogs:
-        raise HTTPException(status_code=404, detail="Catalog not found")
-    stored = catalogs[catalog_id].model_dump()
-    stored.update(update.model_dump(exclude_unset=True))
-    catalogs[catalog_id] = CatalogRead(**stored)
-    return catalogs[catalog_id]'''
 
 @app.patch("/catalogs/{catalog_id}", response_model=CatalogRead)
 def update_catalog(catalog_id: int, update: CatalogUpdate):
@@ -405,13 +319,6 @@ def update_catalog(catalog_id: int, update: CatalogUpdate):
             cnx.close()
 
 
-'''@app.delete("/catalogs/{catalog_id}", status_code=204)
-def delete_catalog(catalog_id: int):
-    if catalog_id not in catalogs:
-        raise HTTPException(status_code=404, detail="Catalog not found")
-    del catalogs[catalog_id]
-    return
-'''
 
 @app.delete("/catalogs/{catalog_id}", status_code=204)
 def delete_catalog(catalog_id: int):

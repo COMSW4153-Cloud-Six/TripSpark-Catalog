@@ -29,12 +29,12 @@ class CatalogBase(BaseModel):
     lat: Optional[float] = Field(
         None,
         description="Latitude of the location.",
-        json_schema_extra={"example": 5646547656.7656564},
+        json_schema_extra={"example": 40.712776},
     )
     lon: Optional[float] = Field(
         None,
         description="Longitude of the location.",
-        json_schema_extra={"example": 3243543243.654654},
+        json_schema_extra={"example": -74.005974},
     )
     rating_avg: Optional[float] = Field(
         None,
@@ -70,8 +70,8 @@ class CatalogBase(BaseModel):
                     "name": "New York City",
                     "country":"USA",
                     "currency": "USD",
-                    "lat": 5646547656.7656564,
-                    "lon": 3243543243.654654,
+                    "lat": 40.712776,
+                    "lon": -74.005974,
                     "rating_avg": 4.5,
                     "description": "Lively location",
                     "vibe": "Good",
@@ -93,8 +93,8 @@ class CatalogCreate(CatalogBase):
                     "name": "Seattle",
                     "country":"USA",
                     "currency": "USD",
-                    "lat": 5464334543.886787,
-                    "lon": 1349856554.765765,
+                    "lat": 37.774929,
+                    "lon": -122.419418,
                     "rating_avg": 3.6,
                     "description": "Scenic location",
                     "vibe": "Cool",
@@ -126,12 +126,12 @@ class CatalogUpdate(BaseModel):
     lat: Optional[float] = Field(
         None,
         description="Latitude of the location.",
-        json_schema_extra={"example": 8876765765.437657},
+        json_schema_extra={"example": 51.507351},
     )
     lon: Optional[float] = Field(
         None,
         description="Longitude of the location.",
-        json_schema_extra={"example": 4767687687.875776},
+        json_schema_extra={"example": -0.127758},
     )
     rating_avg: Optional[float] = Field(
         None,
@@ -166,8 +166,8 @@ class CatalogUpdate(BaseModel):
                     "name": "New York City",
                     "country":"USA",
                     "currency": "USD",
-                    "lat": 8876765765.437657,
-                    "lon": 4767687687.875776,
+                    "lat": 51.507351,
+                    "lon": -0.127758,
                     "rating_avg": 4.1,
                     "description": "Scenic location",
                     "vibe": "Good",
@@ -200,8 +200,8 @@ class CatalogRead(CatalogBase):
                     "name": "New York City",
                     "country":"USA",
                     "currency": "USD",
-                    "lat": 5646547656.7656564,
-                    "lon": 3243543243.654654,
+                    "lat": 40.712776,
+                    "lon": -74.005974,
                     "rating_avg": 4.5,
                     "description": "Lively location",
                     "vibe": "Good",
