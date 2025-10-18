@@ -105,12 +105,67 @@ def get_health_with_path(
 ):
     return make_health(echo=echo, path_echo=path_echo)
 
-@app.post("/catalogs", response_model=CatalogRead, status_code=201)
+'''@app.post("/catalogs", response_model=CatalogRead, status_code=201)
 def create_catalog(catalog: CatalogCreate):
     if catalog.id in catalogs:
         raise HTTPException(status_code=400, detail="Catalog with this ID already exists")
     catalogs[catalog.id] = CatalogRead(**catalog.model_dump())
-    return catalogs[catalog.id]
+    return catalogs[catalog.id]'''
+
+
+@app.post("/catalogs", response_model=CatalogRead, status_code=201)
+def create_catalog(catalog: CatalogCreate):
+
+    cnx = None
+    cursor = None
+    try:
+        cnx = get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        # Prepare insert query
+        insert_query = """
+            INSERT INTO catalog 
+            (id, name, country, currency, lat, lon, rating_avg, description, vibe, budget, poi)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        values = (
+            catalog.id,
+            catalog.name,
+            catalog.country,
+            catalog.currency,
+            catalog.lat,
+            catalog.lon,
+            catalog.rating_avg,
+            catalog.description,
+            catalog.vibe,
+            catalog.budget,
+            catalog.poi
+        )
+
+        cursor.execute(insert_query, values)
+        cnx.commit()
+
+        cursor.execute("SELECT * FROM catalog WHERE id = %s", (catalog.id,))
+        row = cursor.fetchone()
+
+        return CatalogRead(**row)
+
+    except mysql.connector.Error as err:
+        print(f"MySQL error: {err}")
+        if err.errno == 1062:  # Duplicate primary key
+            raise HTTPException(status_code=400, detail=f"Catalog with ID {catalog.id} already exists")
+        raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
+
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    finally:
+        if cursor:
+            cursor.close()
+        if cnx and cnx.is_connected():
+            cnx.close()
+
 
 '''@app.get("/catalogs", response_model=List[CatalogRead])
 def list_catalogs(
@@ -188,9 +243,7 @@ def list_catalogs(
     budget: Optional[str] = Query(None, description="Filter by budget"),
     poi: Optional[str] = Query(None, description="Filter by place of interest"),
 ):
-    """
-    Fetch catalog records from MySQL with optional query filters.
-    """
+
     cnx = None
     cursor = None
     try:
@@ -298,21 +351,99 @@ def get_catalog(catalog_id: int):
             cnx.close()
 
 
-@app.patch("/catalogs/{catalog_id}", response_model=CatalogRead)
+'''@app.patch("/catalogs/{catalog_id}", response_model=CatalogRead)
 def update_catalog(catalog_id: int, update: CatalogUpdate):
     if catalog_id not in catalogs:
         raise HTTPException(status_code=404, detail="Catalog not found")
     stored = catalogs[catalog_id].model_dump()
     stored.update(update.model_dump(exclude_unset=True))
     catalogs[catalog_id] = CatalogRead(**stored)
-    return catalogs[catalog_id]
+    return catalogs[catalog_id]'''
 
-@app.delete("/catalogs/{catalog_id}", status_code=204)
+@app.patch("/catalogs/{catalog_id}", response_model=CatalogRead)
+def update_catalog(catalog_id: int, update: CatalogUpdate):
+    """
+    Update a catalog record in MySQL by ID.
+    """
+    cnx = None
+    cursor = None
+    try:
+        cnx = get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        updates = update.model_dump(exclude_unset=True)
+        if not updates:
+            raise HTTPException(status_code=400, detail="No fields provided for update")
+
+        set_clause = ", ".join([f"{key} = %s" for key in updates.keys()])
+        values = list(updates.values()) + [catalog_id]
+
+        query = f"UPDATE catalog SET {set_clause} WHERE id = %s"
+        cursor.execute(query, values)
+        cnx.commit()
+
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Catalog with ID {catalog_id} not found")
+
+        cursor.execute("SELECT * FROM catalog WHERE id = %s", (catalog_id,))
+        row = cursor.fetchone()
+
+        return CatalogRead(**row)
+
+    except mysql.connector.Error as err:
+        print(f"MySQL error: {err}")
+        raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
+
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    finally:
+        if cursor:
+            cursor.close()
+        if cnx and cnx.is_connected():
+            cnx.close()
+
+
+'''@app.delete("/catalogs/{catalog_id}", status_code=204)
 def delete_catalog(catalog_id: int):
     if catalog_id not in catalogs:
         raise HTTPException(status_code=404, detail="Catalog not found")
     del catalogs[catalog_id]
     return
+'''
+
+@app.delete("/catalogs/{catalog_id}", status_code=204)
+def delete_catalog(catalog_id: int):
+
+    cnx = None
+    cursor = None
+    try:
+        cnx = get_connection()
+        cursor = cnx.cursor()
+
+        query = "DELETE FROM catalog WHERE id = %s"
+        cursor.execute(query, (catalog_id,))
+        cnx.commit()
+
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Catalog with ID {catalog_id} not found")
+
+        return
+
+    except mysql.connector.Error as err:
+        print(f"MySQL error: {err}")
+        raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
+
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    finally:
+        if cursor:
+            cursor.close()
+        if cnx and cnx.is_connected():
+            cnx.close()
 
 
 # -----------------------------------------------------------------------------
