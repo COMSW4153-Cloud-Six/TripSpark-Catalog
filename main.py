@@ -18,74 +18,11 @@ from models.health import Health
 # MySQL connectivity to display the data in catalog table
 # -----------------------------------------------------------------------------
 
-'''import sqlalchemy
-from google.cloud.sql.connector import Connector, IPTypes
-from google.auth.exceptions import DefaultCredentialsError
-
-# Read environment variables
-INSTANCE_CONNECTION_NAME = "INSTANCE_CONNECTION_NAME"
-DB_USER = "DB_USER"
-DB_PASS = "DB_PASS"
-DB_NAME = "DB_NAME"
-
-connector = None
-try:
-    # Attempt to initialize the Cloud SQL connector
-    connector = Connector()
-
-    def getconn():
-        conn = connector.connect(
-            INSTANCE_CONNECTION_NAME,
-            "pymysql",
-            user=DB_USER,
-            password=DB_PASS,
-            db=DB_NAME,
-            ip_type=IPTypes.PUBLIC,
-        )
-        return conn
-
-    # Create SQLAlchemy engine
-    engine = sqlalchemy.create_engine(
-        "mysql+pymysql://",
-        creator=getconn
-    )
-
-    print("Cloud SQL connector initialized successfully.")
-
-except DefaultCredentialsError:
-    print("Failed to find Google Cloud credentials.")
-    print("Run `gcloud auth application-default login` or set the GOOGLE_APPLICATION_CREDENTIALS environment variable.")
-    engine = None
-
-except Exception as e:
-    print("Unexpected error initializing connector:")
-    print(e)
-    engine = None
-
-def fetch_places():
-    try:
-        with engine.connect() as conn:
-            result = conn.execute(sqlalchemy.text("SELECT * FROM catalog"))
-            rows = result.fetchall()
-
-            print("\nLocations in catalog database:")
-            for row in rows:
-                print(row)
-    except Exception as err:
-        print("Not connected to server!")
-        print(f"Error: {err}")
-
-    finally:
-        if connector:
-            connector.close()
-
-
-'''
 #On AWS VM
 import mysql.connector
 
 DB_CONFIG = {
-    'host': '10.142.0.4',  # to connect between VMs in same project use internal IP of catalog-mysql to test from local pycharm use external IP 'host': '34.139.223.61',
+    'host': '34.139.223.61', # '10.142.0.4',  # to connect between VMs in same project use internal IP of catalog-mysql to test from local pycharm use external IP 'host': '34.139.223.61',
     'user': 'felicia',
     'password': '1234',
     'database': 'TripSparkCatalog'
@@ -128,24 +65,6 @@ def fetch_places():
             except Exception:
                 pass
 
-def fetch_all_catalogs() -> List[dict]:
-    """Fetch all rows from the catalog table."""
-    cnx = None
-    cursor = None
-    try:
-        cnx = get_connection()
-        cursor = cnx.cursor(dictionary=True)  # Return results as dicts
-        cursor.execute("SELECT * FROM catalog")
-        rows = cursor.fetchall()
-        return rows
-    except Exception as err:
-        print(f"MySQL error: {err}")
-        raise HTTPException(status_code=500, detail="Error fetching data from MySQL")
-    finally:
-        if cursor:
-            cursor.close()
-        if cnx and cnx.is_connected():
-            cnx.close()
 
 port = int(os.environ.get("FASTAPIPORT", 8000))
 
@@ -193,7 +112,7 @@ def create_catalog(catalog: CatalogCreate):
     catalogs[catalog.id] = CatalogRead(**catalog.model_dump())
     return catalogs[catalog.id]
 
-@app.get("/catalogs", response_model=List[CatalogRead])
+'''@app.get("/catalogs", response_model=List[CatalogRead])
 def list_catalogs(
     name: Optional[str] = Query(None, description="Filter by city"),
     country: Optional[str] = Query(None, description="Filter by country"),
@@ -233,6 +152,28 @@ def list_catalogs(
     fetch_places()
 
     return results
+'''
+
+@app.get("/catalogs", response_model=List[CatalogRead])
+def list_catalogs():
+    """Fetch all records from catalog table."""
+    cnx = None
+    cursor = None
+    try:
+        cnx = get_connection()
+        cursor = cnx.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM catalog")
+        rows = cursor.fetchall()
+        return rows
+    except Exception as err:
+        print(f"MySQL error: {err}")
+        raise HTTPException(status_code=500, detail="Failed to fetch catalog data")
+    finally:
+        if cursor:
+            cursor.close()
+        if cnx and cnx.is_connected():
+            cnx.close()
+
 
 @app.get("/catalogs/{catalog_id}", response_model=CatalogRead)
 def get_catalog(catalog_id: int):
