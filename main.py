@@ -152,7 +152,7 @@ def list_catalogs(
     fetch_places()
 
     return results
-'''
+
 
 @app.get("/catalogs", response_model=List[CatalogRead])
 def list_catalogs():
@@ -173,13 +173,130 @@ def list_catalogs():
             cursor.close()
         if cnx and cnx.is_connected():
             cnx.close()
+'''
+
+@app.get("/catalogs", response_model=List[CatalogRead])
+def list_catalogs(
+    name: Optional[str] = Query(None, description="Filter by city"),
+    country: Optional[str] = Query(None, description="Filter by country"),
+    currency: Optional[str] = Query(None, description="Filter by currency"),
+    lat: Optional[float] = Query(None, description="Filter by latitude"),
+    lon: Optional[float] = Query(None, description="Filter by longitude"),
+    rating_avg: Optional[float] = Query(None, description="Filter by rating"),
+    description: Optional[str] = Query(None, description="Filter by description"),
+    vibe: Optional[str] = Query(None, description="Filter by vibe"),
+    budget: Optional[str] = Query(None, description="Filter by budget"),
+    poi: Optional[str] = Query(None, description="Filter by place of interest"),
+):
+    """
+    Fetch catalog records from MySQL with optional query filters.
+    """
+    cnx = None
+    cursor = None
+    try:
+        cnx = get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        # Start building query
+        query = "SELECT * FROM catalog WHERE 1=1"
+        params = {}
+
+        # Add filters dynamically
+        if name:
+            query += " AND name = %(name)s"
+            params["name"] = name
+        if country:
+            query += " AND country = %(country)s"
+            params["country"] = country
+        if currency:
+            query += " AND currency = %(currency)s"
+            params["currency"] = currency
+        if lat:
+            query += " AND lat = %(lat)s"
+            params["lat"] = lat
+        if lon:
+            query += " AND lon = %(lon)s"
+            params["lon"] = lon
+        if rating_avg:
+            query += " AND rating_avg = %(rating_avg)s"
+            params["rating_avg"] = rating_avg
+        if description:
+            query += " AND description LIKE %(description)s"
+            params["description"] = f"%{description}%"
+        if vibe:
+            query += " AND vibe = %(vibe)s"
+            params["vibe"] = vibe
+        if budget:
+            query += " AND budget = %(budget)s"
+            params["budget"] = budget
+        if poi:
+            query += " AND poi = %(poi)s"
+            params["poi"] = poi
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        if not rows:
+            raise HTTPException(status_code=404, detail="No matching catalogs found")
+
+        # Convert MySQL rows → Pydantic models
+        return [CatalogRead(**row) for row in rows]
+
+    except mysql.connector.Error as err:
+        print(f"MySQL error: {err}")
+        raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
+
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    finally:
+        if cursor:
+            cursor.close()
+        if cnx and cnx.is_connected():
+            cnx.close()
 
 
-@app.get("/catalogs/{catalog_id}", response_model=CatalogRead)
+'''@app.get("/catalogs/{catalog_id}", response_model=CatalogRead)
 def get_catalog(catalog_id: int):
     if catalog_id not in catalogs:
         raise HTTPException(status_code=404, detail="Catalog not found")
-    return catalogs[catalog_id]
+    return catalogs[catalog_id]'''
+
+@app.get("/catalogs/{catalog_id}", response_model=CatalogRead)
+def get_catalog(catalog_id: int):
+    """
+    Fetch a single catalog record from MySQL by ID.
+    """
+    cnx = None
+    cursor = None
+    try:
+        cnx = get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        query = "SELECT * FROM catalog WHERE id = %s"
+        cursor.execute(query, (catalog_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Catalog with ID {catalog_id} not found")
+
+        return CatalogRead(**row)
+
+    except mysql.connector.Error as err:
+        print(f"MySQL error: {err}")
+        raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
+
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    finally:
+        if cursor:
+            cursor.close()
+        if cnx and cnx.is_connected():
+            cnx.close()
+
 
 @app.patch("/catalogs/{catalog_id}", response_model=CatalogRead)
 def update_catalog(catalog_id: int, update: CatalogUpdate):
