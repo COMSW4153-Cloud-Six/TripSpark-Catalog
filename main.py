@@ -67,11 +67,10 @@ def fetch_places():
 
 port = int(os.environ.get("FASTAPIPORT", 8000))
 
-#catalogs: Dict[int, CatalogRead] = {}
 
 app = FastAPI(
     title="TripSpark - Catalog API",
-    description="FastAPI app using Pydantic v2 models for TripSpark - Catalog",
+    description="FastAPI app using Pydantic v2 models for TripSpark - Catalog deployed in GCP VM",
     version="0.1.0",
 )
 
