@@ -340,17 +340,16 @@ def update_catalog(catalog_id: int, update: CatalogUpdate):
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail=f"Catalog with ID {catalog_id} not found")
 
+        # Fetch updated row
         cursor.execute("SELECT * FROM catalog WHERE id = %s", (catalog_id,))
         row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Catalog with ID {catalog_id} not found")
+
         return CatalogRead(**row)
 
     except mysql.connector.Error as err:
-        print(f"MySQL error: {err}")
         raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
-
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
 
     finally:
         if cursor:
