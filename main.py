@@ -273,7 +273,7 @@ def get_catalog(catalog_id: int):
 
 
 
-@app.patch("/catalogs/{catalog_id}", response_model=CatalogRead)
+'''@app.patch("/catalogs/{catalog_id}", response_model=CatalogRead)
 def update_catalog(catalog_id: int, update: CatalogUpdate):
     """
     Update a catalog record in MySQL by ID.
@@ -301,6 +301,47 @@ def update_catalog(catalog_id: int, update: CatalogUpdate):
         cursor.execute("SELECT * FROM catalog WHERE id = %s", (catalog_id,))
         row = cursor.fetchone()
 
+        return CatalogRead(**row)
+
+    except mysql.connector.Error as err:
+        print(f"MySQL error: {err}")
+        raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
+
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    finally:
+        if cursor:
+            cursor.close()
+        if cnx and cnx.is_connected():
+            cnx.close()
+'''
+
+@app.patch("/catalogs/{catalog_id}", response_model=CatalogRead)
+def update_catalog(catalog_id: int, update: CatalogUpdate):
+    cnx = None
+    cursor = None
+    try:
+        cnx = get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        updates = update.model_dump(exclude_unset=True)
+        if not updates:
+            raise HTTPException(status_code=400, detail="No fields provided for update")
+
+        set_clause = ", ".join([f"{key} = %s" for key in updates.keys()])
+        values = list(updates.values()) + [catalog_id]
+
+        query = f"UPDATE catalog SET {set_clause} WHERE id = %s"
+        cursor.execute(query, values)
+        cnx.commit()
+
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Catalog with ID {catalog_id} not found")
+
+        cursor.execute("SELECT * FROM catalog WHERE id = %s", (catalog_id,))
+        row = cursor.fetchone()
         return CatalogRead(**row)
 
     except mysql.connector.Error as err:
