@@ -36,7 +36,7 @@ class CatalogBase(BaseModel):
         description="Longitude of the location.",
         json_schema_extra={"example": 3243543243.654654},
     )
-    rating_avg: Optional[int] = Field(
+    rating_avg: Optional[float] = Field(
         None,
         description="Rating of the location.",
         json_schema_extra={"example": 4.5},
@@ -133,7 +133,7 @@ class CatalogUpdate(BaseModel):
         description="Longitude of the location.",
         json_schema_extra={"example": 4767687687.875776},
     )
-    rating_avg: Optional[int] = Field(
+    rating_avg: Optional[float] = Field(
         None,
         description="Rating of the location.",
         json_schema_extra={"example": 4.1},

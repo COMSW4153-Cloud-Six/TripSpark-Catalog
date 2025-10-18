@@ -18,7 +18,7 @@ from models.health import Health
 # MySQL connectivity to display the data in catalog table
 # -----------------------------------------------------------------------------
 
-import sqlalchemy
+'''import sqlalchemy
 from google.cloud.sql.connector import Connector, IPTypes
 from google.auth.exceptions import DefaultCredentialsError
 
@@ -80,14 +80,15 @@ def fetch_places():
             connector.close()
 
 
-''' On AWS VM
+'''
+#On AWS VM
 import mysql.connector
 
 DB_CONFIG = {
-    'host': 'your_ec2_instance_public_ip',  # or private IP if in same VPC
-    'user': 'your_username',
-    'password': 'your_password',
-    'database': 'your_database_name'
+    'host': '34.139.223.61',
+    'user': 'felicia',
+    'password': '1234',
+    'database': 'TripSparkCatalog'
 }
 
 def get_connection():
@@ -126,9 +127,25 @@ def fetch_places():
                 print("MySQL connection closed.")
             except Exception:
                 pass
-'''
 
-
+def fetch_all_catalogs() -> List[dict]:
+    """Fetch all rows from the catalog table."""
+    cnx = None
+    cursor = None
+    try:
+        cnx = get_connection()
+        cursor = cnx.cursor(dictionary=True)  # Return results as dicts
+        cursor.execute("SELECT * FROM catalog")
+        rows = cursor.fetchall()
+        return rows
+    except Exception as err:
+        print(f"MySQL error: {err}")
+        raise HTTPException(status_code=500, detail="Error fetching data from MySQL")
+    finally:
+        if cursor:
+            cursor.close()
+        if cnx and cnx.is_connected():
+            cnx.close()
 
 port = int(os.environ.get("FASTAPIPORT", 8000))
 
