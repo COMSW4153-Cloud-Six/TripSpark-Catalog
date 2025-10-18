@@ -22,7 +22,7 @@ from models.health import Health
 import mysql.connector
 
 DB_CONFIG = {
-    'host': '34.139.223.61', # '10.142.0.4',  # to connect between VMs in same project use internal IP of catalog-mysql to test from local pycharm use external IP 'host': '34.139.223.61',
+    'host': '10.142.0.4', #'34.139.223.61',  # to connect between VMs in same project use internal IP of catalog-mysql to test from local pycharm use external IP 'host': '34.139.223.61',
     'user': 'felicia',
     'password': '1234',
     'database': 'TripSparkCatalog'
