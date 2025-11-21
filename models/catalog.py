@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
-from typing import Literal
+from typing import Literal, List
 
 '''class CatalogBase(BaseModel):
     id: int = Field(
@@ -281,19 +281,19 @@ class CatalogBase(BaseModel):
         json_schema_extra={"example": 200},
     )
 
-    vibes: str = Field(
+    vibes: List[str] = Field(
         ...,
         description="Comma-separated set of vibes",
         json_schema_extra={"example": "Urban,Modern,Nightlife"},
     )
 
-    activities: str = Field(
+    activities: List[str] = Field(
         ...,
         description="Comma-separated set of activities",
         json_schema_extra={"example": "Photography,Shopping,Walking Tours"},
     )
 
-    food: str = Field(
+    food: List[str] = Field(
         ...,
         description="Comma-separated set of food types",
         json_schema_extra={"example": "Street Food,Coffee,Local Cuisine"},
