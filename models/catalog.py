@@ -664,7 +664,7 @@ class CatalogUpdate(BaseModel):
             "examples": [
                 {
                     "description": "Large urban park offering scenic landscapes and recreational spaces",
-                    "vibe": "Nature,Relaxing,Scenic",
+                    "vibes": "Nature,Relaxing,Scenic",
                     "budget": "110"
                 },
                 {
