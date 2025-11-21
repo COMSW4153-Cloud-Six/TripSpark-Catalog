@@ -281,19 +281,19 @@ class CatalogBase(BaseModel):
         json_schema_extra={"example": 200},
     )
 
-    vibes: List[str] = Field(
+    vibes: str = Field(
         ...,
         description="Comma-separated set of vibes",
         json_schema_extra={"example": "Urban,Modern,Nightlife"},
     )
 
-    activities: List[str] = Field(
+    activities: str = Field(
         ...,
         description="Comma-separated set of activities",
         json_schema_extra={"example": "Photography,Shopping,Walking Tours"},
     )
 
-    food: List[str] = Field(
+    food: str = Field(
         ...,
         description="Comma-separated set of food types",
         json_schema_extra={"example": "Street Food,Coffee,Local Cuisine"},
