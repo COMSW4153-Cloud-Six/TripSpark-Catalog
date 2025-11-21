@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -7,19 +6,16 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Path
-
 import mysql.connector
 
 from models.catalog import CatalogCreate, CatalogRead, CatalogUpdate
 from models.health import Health
 
-
 # -----------------------------------------------------------------------------
 # MySQL Connectivity
 # -----------------------------------------------------------------------------
-
 DB_CONFIG = {
-    "host": "10.142.0.4",  # Use internal IP inside GCP, external when local testing
+    "host": "10.142.0.4",
     "user": "felicia",
     "password": "1234",
     "database": "TripSparkCatalog",
@@ -33,7 +29,6 @@ def get_connection():
 # -----------------------------------------------------------------------------
 # App Config
 # -----------------------------------------------------------------------------
-
 port = int(os.environ.get("FASTAPIPORT", 8000))
 
 app = FastAPI(
@@ -46,7 +41,6 @@ app = FastAPI(
 # -----------------------------------------------------------------------------
 # Health Endpoint
 # -----------------------------------------------------------------------------
-
 def make_health(echo: Optional[str], path_echo: Optional[str] = None) -> Health:
     try:
         ip_catalog = socket.gethostbyname(socket.gethostname())
@@ -64,41 +58,45 @@ def make_health(echo: Optional[str], path_echo: Optional[str] = None) -> Health:
 
 
 @app.get("/health", response_model=Health)
-def get_health_no_path(echo: str | None = Query(None)):
+def get_health_no_path(echo: Optional[str] = Query(None)):
     return make_health(echo=echo)
 
 
 @app.get("/health/{path_echo}", response_model=Health)
-def get_health_with_path(
-    path_echo: str = Path(...),
-    echo: str | None = Query(None),
-):
+def get_health_with_path(path_echo: str = Path(...), echo: Optional[str] = Query(None)):
     return make_health(echo=echo, path_echo=path_echo)
+
+
+# -----------------------------------------------------------------------------
+# Utility: normalize DB rows for CatalogRead
+# -----------------------------------------------------------------------------
+def normalize_catalog_row(row: dict) -> dict:
+    """Convert sets/lists in DB row to comma-separated strings for Pydantic."""
+    for field in ["vibes", "activities", "food"]:
+        if field in row and isinstance(row[field], (set, list)):
+            row[field] = ", ".join(sorted(row[field]))
+    return row
 
 
 # -----------------------------------------------------------------------------
 # Create Catalog
 # -----------------------------------------------------------------------------
-
 @app.post("/catalogs", response_model=CatalogRead, status_code=201)
 def create_catalog(catalog: CatalogCreate):
-
-    cnx = None
-    cursor = None
-
+    cnx = cursor = None
     try:
         cnx = get_connection()
         cursor = cnx.cursor(dictionary=True)
 
         insert_query = """
-            INSERT INTO catalog 
-            (
-                poi, city, country, currency, latitude, longitude, rating,
-                description, spending, budget, vibes, activities, food,
-                best_season, trip_days, nearest_airport, transport,
-                accessibility, direction
-            )
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        INSERT INTO catalog 
+        (
+            poi, city, country, currency, latitude, longitude, rating,
+            description, spending, budget, vibes, activities, food,
+            best_season, trip_days, nearest_airport, transport,
+            accessibility, direction
+        )
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """
 
         values = (
@@ -126,24 +124,15 @@ def create_catalog(catalog: CatalogCreate):
         cursor.execute(insert_query, values)
         cnx.commit()
 
-        cursor.execute(
-            "SELECT * FROM catalog WHERE poi = %s",
-            (catalog.poi.lower().strip(),),
-        )
+        cursor.execute("SELECT * FROM catalog WHERE poi = %s", (catalog.poi.lower().strip(),))
         row = cursor.fetchone()
-
+        row = normalize_catalog_row(row)
         return CatalogRead(**row)
 
     except mysql.connector.Error as err:
         if err.errno == 1062:
-            raise HTTPException(
-                status_code=400,
-                detail=f"The location {catalog.poi} already exists",
-            )
+            raise HTTPException(status_code=400, detail=f"The location {catalog.poi} already exists")
         raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
-
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
 
     finally:
         if cursor:
@@ -155,7 +144,6 @@ def create_catalog(catalog: CatalogCreate):
 # -----------------------------------------------------------------------------
 # List / Filter Catalogs
 # -----------------------------------------------------------------------------
-
 @app.get("/catalogs", response_model=List[CatalogRead])
 def list_catalogs(
     city: Optional[str] = Query(None),
@@ -170,10 +158,7 @@ def list_catalogs(
     transport: Optional[str] = Query(None),
     accessibility: Optional[str] = Query(None),
 ):
-
-    cnx = None
-    cursor = None
-
+    cnx = cursor = None
     try:
         cnx = get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -184,57 +169,43 @@ def list_catalogs(
         if city:
             query += " AND city = %(city)s"
             params["city"] = city.lower().strip()
-
         if country:
             query += " AND country = %(country)s"
             params["country"] = country.lower().strip()
-
         if best_season:
             query += " AND best_season = %(best_season)s"
             params["best_season"] = best_season.lower().strip()
-
         if transport:
             query += " AND transport = %(transport)s"
             params["transport"] = transport.lower().strip()
-
         if rating_avg is not None:
             query += " AND rating >= %(rating_avg)s"
             params["rating_avg"] = rating_avg
-
         if activities:
             query += " AND activities LIKE %(activities)s"
             params["activities"] = f"%{activities.lower().strip()}%"
-
         if accessibility:
             query += " AND accessibility LIKE %(accessibility)s"
             params["accessibility"] = f"%{accessibility.lower().strip()}%"
-
         if food:
             query += " AND food LIKE %(food)s"
             params["food"] = f"%{food.lower().strip()}%"
-
         if vibes:
             query += " AND vibes LIKE %(vibes)s"
             params["vibes"] = f"%{vibes.lower().strip()}%"
-
         if budget is not None:
             query += " AND budget <= %(budget)s"
             params["budget"] = budget
-
         if poi:
             query += " AND poi LIKE %(poi)s"
             params["poi"] = f"%{poi.lower().strip()}%"
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
-
         if not rows:
             raise HTTPException(status_code=404, detail="No matching catalogs found")
 
-        return [CatalogRead(**row) for row in rows]
-
-    except mysql.connector.Error as err:
-        raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
+        return [CatalogRead(**normalize_catalog_row(row)) for row in rows]
 
     finally:
         if cursor:
@@ -246,34 +217,19 @@ def list_catalogs(
 # -----------------------------------------------------------------------------
 # Get Single Catalog
 # -----------------------------------------------------------------------------
-
 @app.get("/catalogs/{poi}", response_model=CatalogRead)
 def get_catalog(poi: str):
-
-    cnx = None
-    cursor = None
-
+    cnx = cursor = None
     try:
         cnx = get_connection()
         cursor = cnx.cursor(dictionary=True)
 
-        cursor.execute(
-            "SELECT * FROM catalog WHERE poi = %s",
-            (poi.lower().strip(),),
-        )
-
+        cursor.execute("SELECT * FROM catalog WHERE poi = %s", (poi.lower().strip(),))
         row = cursor.fetchone()
-
         if not row:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Catalog with location {poi} not found",
-            )
+            raise HTTPException(status_code=404, detail=f"Catalog with location {poi} not found")
 
-        return CatalogRead(**row)
-
-    except mysql.connector.Error as err:
-        raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
+        return CatalogRead(**normalize_catalog_row(row))
 
     finally:
         if cursor:
@@ -285,19 +241,14 @@ def get_catalog(poi: str):
 # -----------------------------------------------------------------------------
 # Update Catalog
 # -----------------------------------------------------------------------------
-
 @app.patch("/catalogs/{poi}", response_model=CatalogRead)
 def update_catalog(poi: str, update: CatalogUpdate):
-
-    cnx = None
-    cursor = None
-
+    cnx = cursor = None
     try:
         cnx = get_connection()
         cursor = cnx.cursor(dictionary=True)
 
         updates = update.model_dump(exclude_unset=True)
-
         if not updates:
             raise HTTPException(status_code=400, detail="No fields provided for update")
 
@@ -312,23 +263,12 @@ def update_catalog(poi: str, update: CatalogUpdate):
         query = f"UPDATE catalog SET {set_clause} WHERE poi = %s"
         cursor.execute(query, values)
         cnx.commit()
-
         if cursor.rowcount == 0:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Catalog with location {poi} not found",
-            )
+            raise HTTPException(status_code=404, detail=f"Catalog with location {poi} not found")
 
-        cursor.execute(
-            "SELECT * FROM catalog WHERE poi = %s",
-            (poi.lower().strip(),),
-        )
-
+        cursor.execute("SELECT * FROM catalog WHERE poi = %s", (poi.lower().strip(),))
         row = cursor.fetchone()
-        return CatalogRead(**row)
-
-    except mysql.connector.Error as err:
-        raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
+        return CatalogRead(**normalize_catalog_row(row))
 
     finally:
         if cursor:
@@ -340,32 +280,16 @@ def update_catalog(poi: str, update: CatalogUpdate):
 # -----------------------------------------------------------------------------
 # Delete Catalog
 # -----------------------------------------------------------------------------
-
 @app.delete("/catalogs/{poi}", status_code=204)
 def delete_catalog(poi: str):
-
-    cnx = None
-    cursor = None
-
+    cnx = cursor = None
     try:
         cnx = get_connection()
         cursor = cnx.cursor()
-
-        cursor.execute(
-            "DELETE FROM catalog WHERE poi = %s",
-            (poi.lower().strip(),),
-        )
+        cursor.execute("DELETE FROM catalog WHERE poi = %s", (poi.lower().strip(),))
         cnx.commit()
-
         if cursor.rowcount == 0:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Catalog with location {poi} not found",
-            )
-
-    except mysql.connector.Error as err:
-        raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
-
+            raise HTTPException(status_code=404, detail=f"Catalog with location {poi} not found")
     finally:
         if cursor:
             cursor.close()
@@ -376,18 +300,14 @@ def delete_catalog(poi: str):
 # -----------------------------------------------------------------------------
 # Root
 # -----------------------------------------------------------------------------
-
 @app.get("/")
 def root():
-    return {
-        "message": "Welcome to the TripSpark - Catalog API. See /docs for OpenAPI UI."
-    }
+    return {"message": "Welcome to the TripSpark - Catalog API. See /docs for OpenAPI UI."}
 
 
 # -----------------------------------------------------------------------------
 # Run
 # -----------------------------------------------------------------------------
-
 if __name__ == "__main__":
     import uvicorn
 
