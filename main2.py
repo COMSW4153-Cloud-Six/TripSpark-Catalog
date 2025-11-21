@@ -187,12 +187,20 @@ def list_catalogs(
         if accessibility:
             query += " AND accessibility LIKE %(accessibility)s"
             params["accessibility"] = f"%{accessibility.lower().strip()}%"
-        if food:
-            query += " AND food LIKE %(food)s"
-            params["food"] = f"%{food.lower().strip()}%"
         if vibes:
-            query += " AND vibes LIKE %(vibes)s"
-            params["vibes"] = f"%{vibes.lower().strip()}%"
+            vibes_list = [v.strip().lower() for v in vibes.split(",") if v.strip()]
+            if vibes_list:
+                vibes_conditions = " OR ".join([f"vibes LIKE %({i})s" for i in range(len(vibes_list))])
+                query += f" AND ({vibes_conditions})"
+                for i, v in enumerate(vibes_list):
+                    params[str(i)] = f"%{v}%"
+        if food:
+            food_list = [f.strip().lower() for f in food.split(",") if f.strip()]
+            if food_list:
+                food_conditions = " OR ".join([f"food LIKE %({100+i})s" for i in range(len(food_list))])
+                query += f" AND ({food_conditions})"
+                for i, f_val in enumerate(food_list):
+                    params[str(100+i)] = f"%{f_val}%"
         if budget is not None:
             query += " AND budget <= %(budget)s"
             params["budget"] = budget
