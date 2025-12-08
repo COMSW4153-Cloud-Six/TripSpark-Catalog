@@ -3,19 +3,18 @@ from __future__ import annotations
 import os
 import socket
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
-from fastapi import FastAPI, HTTPException, Query, Path, Request
+from fastapi import FastAPI, HTTPException, Query, Path, Depends, Header
 import mysql.connector
-import jwt  # PyJWT
+import jwt
 
 from models.catalog import CatalogCreate, CatalogRead, CatalogUpdate
 from models.health import Health
 
-# -------------------------------------------------------------------------
-# Config
-# -------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
+# MySQL Connectivity
+# -----------------------------------------------------------------------------
 DB_CONFIG = {
     "host": "10.142.0.4",
     "user": "felicia",
@@ -23,39 +22,27 @@ DB_CONFIG = {
     "database": "TripSparkCatalog",
 }
 
-# Same secret as tripspark-auth
-AUTH_JWT_SECRET = os.environ.get("AUTH_JWT_SECRET", "dev-secret-change-me")
-
-port = int(os.environ.get("FASTAPIPORT", 8000))
-
-app = FastAPI(
-    title="TripSpark - Catalog API (JWT demo)",
-    description="FastAPI app for TripSpark Catalog with JWT-protected methods",
-    version="0.1.0",
-)
-
 
 def get_connection():
     return mysql.connector.connect(**DB_CONFIG)
 
 
-# -------------------------------------------------------------------------
-# JWT helper
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Auth / JWT Config
+# -----------------------------------------------------------------------------
+AUTH_JWT_SECRET = os.environ.get("AUTH_JWT_SECRET", "dev-secret-change-me")
 
-def require_jwt(request: Request) -> Dict:
+
+def verify_jwt_or_401(authorization: str = Header(None)) -> Dict[str, Any]:
     """
-    Read and validate TripSpark JWT from Authorization header.
-    Expected header: Authorization: Bearer <token>
+    Dependency to validate our TripSpark JWT from tripspark-auth.
+
+    Expects:  Authorization: Bearer <token>
     """
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
+    if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=403, detail="Not authenticated")
 
-    token = auth_header.split(" ", 1)[1].strip()
-
-    if not AUTH_JWT_SECRET:
-        raise HTTPException(status_code=500, detail="AUTH_JWT_SECRET not configured")
+    token = authorization.split(" ", 1)[1].strip()
 
     try:
         payload = jwt.decode(token, AUTH_JWT_SECRET, algorithms=["HS256"])
@@ -66,10 +53,24 @@ def require_jwt(request: Request) -> Dict:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
-# -------------------------------------------------------------------------
-# Health Endpoints (unchanged)
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# App Config
+# -----------------------------------------------------------------------------
+port = int(os.environ.get("FASTAPIPORT", 8000))
 
+app = FastAPI(
+    title="TripSpark - Catalog API (JWT-protected)",
+    description=(
+        "FastAPI app using Pydantic v2 models for TripSpark - Catalog deployed in GCP VM. "
+        "This version (main4.py) checks TripSpark JWT for certain endpoints."
+    ),
+    version="0.1.0",
+)
+
+
+# -----------------------------------------------------------------------------
+# Health Endpoint
+# -----------------------------------------------------------------------------
 def make_health(echo: Optional[str], path_echo: Optional[str] = None) -> Health:
     try:
         ip_catalog = socket.gethostbyname(socket.gethostname())
@@ -96,10 +97,9 @@ def get_health_with_path(path_echo: str = Path(...), echo: Optional[str] = Query
     return make_health(echo=echo, path_echo=path_echo)
 
 
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Utility: normalize DB rows for CatalogRead
-# -------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
 def normalize_catalog_row(row: dict) -> dict:
     """Convert sets/lists in DB row to comma-separated strings for Pydantic."""
     for field in ["vibes", "activities", "food"]:
@@ -108,26 +108,23 @@ def normalize_catalog_row(row: dict) -> dict:
     return row
 
 
-# -------------------------------------------------------------------------
-# JWT DEMO ENDPOINT (extra, like before)
-# -------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
+# Demo secure endpoint (new)
+# -----------------------------------------------------------------------------
 @app.get("/secure-catalog-ping")
-def secure_catalog_ping(request: Request):
+def secure_catalog_ping(user: Dict[str, Any] = Depends(verify_jwt_or_401)):
     """
-    Simple endpoint to show JWT is required and returns decoded user info.
+    Demo endpoint just to clearly show JWT verification is happening.
     """
-    user = require_jwt(request)
     return {
         "message": "Secure Catalog endpoint OK",
         "user": user,
     }
 
 
-# -------------------------------------------------------------------------
-# Create Catalog  (no auth needed)
-# -------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
+# Create Catalog  (UNCHANGED, open)
+# -----------------------------------------------------------------------------
 @app.post("/catalogs", response_model=CatalogRead, status_code=201)
 def create_catalog(catalog: CatalogCreate):
     cnx = cursor = None
@@ -188,13 +185,11 @@ def create_catalog(catalog: CatalogCreate):
             cnx.close()
 
 
-# -------------------------------------------------------------------------
-# List / Filter Catalogs  (EXISTING METHOD now JWT-protected)
-# -------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
+# List / Filter Catalogs  (JWT-PROTECTED EXISTING METHOD)
+# -----------------------------------------------------------------------------
 @app.get("/catalogs", response_model=List[CatalogRead])
 def list_catalogs(
-    request: Request,
     city: Optional[str] = Query(None),
     country: Optional[str] = Query(None),
     rating_avg: Optional[float] = Query(None),
@@ -206,17 +201,18 @@ def list_catalogs(
     best_season: Optional[str] = Query(None),
     transport: Optional[str] = Query(None),
     accessibility: Optional[str] = Query(None),
+    user: Dict[str, Any] = Depends(verify_jwt_or_401),  # <-- JWT REQUIRED HERE
 ):
-    # 🔐 REQUIRE VALID JWT FOR THIS EXISTING METHOD
-    user = require_jwt(request)
-
+    """
+    Existing list_catalogs method, now requiring a valid TripSpark JWT.
+    """
     cnx = cursor = None
     try:
         cnx = get_connection()
         cursor = cnx.cursor(dictionary=True)
 
         query = "SELECT * FROM catalog WHERE 1=1"
-        params = {}
+        params: Dict[str, Any] = {}
 
         if city:
             query += " AND city = %(city)s"
@@ -239,9 +235,9 @@ def list_catalogs(
         if accessibility:
             query += " AND accessibility LIKE %(accessibility)s"
             params["accessibility"] = f"%{accessibility.lower().strip()}%"
+
         if vibes:
-            vibes_list = [v.strip().lower() for v in vibes.split(",") if v.strip()]:
-                ...
+            vibes_list = [v.strip().lower() for v in vibes.split(",") if v.strip()]
             if vibes_list:
                 vibes_conditions = " OR ".join(
                     [f"vibes LIKE %({i})s" for i in range(len(vibes_list))]
@@ -249,15 +245,17 @@ def list_catalogs(
                 query += f" AND ({vibes_conditions})"
                 for i, v in enumerate(vibes_list):
                     params[str(i)] = f"%{v}%"
+
         if food:
             food_list = [f.strip().lower() for f in food.split(",") if f.strip()]
             if food_list:
                 food_conditions = " OR ".join(
-                    [f"food LIKE %({100+i})s" for i in range(len(food_list))]
+                    [f"food LIKE %({100 + i})s" for i in range(len(food_list))]
                 )
                 query += f" AND ({food_conditions})"
                 for i, f_val in enumerate(food_list):
-                    params[str(100+i)] = f"%{f_val}%"
+                    params[str(100 + i)] = f"%{f_val}%"
+
         if budget is not None:
             query += " AND budget <= %(budget)s"
             params["budget"] = budget
@@ -279,10 +277,9 @@ def list_catalogs(
             cnx.close()
 
 
-# -------------------------------------------------------------------------
-# Get / Update / Delete Catalog (unchanged, no auth here for now)
-# -------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
+# Get Single Catalog  (left open / no JWT)
+# -----------------------------------------------------------------------------
 @app.get("/catalogs/{poi}", response_model=CatalogRead)
 def get_catalog(poi: str):
     cnx = cursor = None
@@ -304,6 +301,9 @@ def get_catalog(poi: str):
             cnx.close()
 
 
+# -----------------------------------------------------------------------------
+# Update Catalog  (left open / no JWT, but could be protected too)
+# -----------------------------------------------------------------------------
 @app.patch("/catalogs/{poi}", response_model=CatalogRead)
 def update_catalog(poi: str, update: CatalogUpdate):
     cnx = cursor = None
@@ -339,6 +339,9 @@ def update_catalog(poi: str, update: CatalogUpdate):
             cnx.close()
 
 
+# -----------------------------------------------------------------------------
+# Delete Catalog  (left open / no JWT)
+# -----------------------------------------------------------------------------
 @app.delete("/catalogs/{poi}", status_code=204)
 def delete_catalog(poi: str):
     cnx = cursor = None
@@ -356,19 +359,19 @@ def delete_catalog(poi: str):
             cnx.close()
 
 
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Root
-# -------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
 @app.get("/")
 def root():
-    return {"message": "Welcome to the TripSpark - Catalog API (JWT demo). See /docs for OpenAPI UI."}
+    return {
+        "message": "Welcome to the TripSpark - Catalog API (JWT-protected list_catalogs). See /docs for OpenAPI UI."
+    }
 
 
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Run
-# -------------------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
 
