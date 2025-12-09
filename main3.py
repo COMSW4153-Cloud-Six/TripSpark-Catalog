@@ -2,21 +2,20 @@ from __future__ import annotations
 
 import os
 import socket
-import json
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict
 
-from fastapi import FastAPI, HTTPException, Query, Path, Header
+from fastapi import FastAPI, HTTPException, Query, Path, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import mysql.connector
-import jwt
+import jwt  # PyJWT
 
-# NEW for Requirement 4
-from google.cloud import pubsub_v1
+from models.catalog import CatalogCreate, CatalogRead, CatalogUpdate
+from models.health import Health
 
-
-# ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # MySQL Connectivity
-# ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 DB_CONFIG = {
     "host": "10.142.0.4",
     "user": "felicia",
@@ -24,16 +23,15 @@ DB_CONFIG = {
     "database": "TripSparkCatalog",
 }
 
+
 def get_connection():
     return mysql.connector.connect(**DB_CONFIG)
 
 
-# ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # App Config
-# ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 port = int(os.environ.get("FASTAPIPORT", 8000))
-
-AUTH_JWT_SECRET = os.environ.get("AUTH_JWT_SECRET")
 
 app = FastAPI(
     title="TripSpark - Catalog API",
@@ -41,58 +39,95 @@ app = FastAPI(
     version="0.1.0",
 )
 
-
-# ---------------------------------------------------------------------
-# Pub/Sub configuration (Requirement 4)
-# ---------------------------------------------------------------------
-PUBSUB_TOPIC = "projects/long-way-475401-b6/topics/tripspark-events"
-publisher = pubsub_v1.PublisherClient()
-
-
-# ---------------------------------------------------------------------
-# HEALTH ENDPOINTS
-# ---------------------------------------------------------------------
-def make_health(echo: Optional[str], path_echo: Optional[str] = None):
+# -----------------------------------------------------------------------------
+# Health Endpoint
+# -----------------------------------------------------------------------------
+def make_health(echo: Optional[str], path_echo: Optional[str] = None) -> Health:
     try:
         ip_catalog = socket.gethostbyname(socket.gethostname())
     except Exception:
         ip_catalog = "127.0.0.1"
 
-    return {
-        "status": 200,
-        "status_message": "OK",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "ip_address": ip_catalog,
-        "echo": echo,
-        "path_echo": path_echo,
-    }
+    return Health(
+        status=200,
+        status_message="OK",
+        timestamp=datetime.utcnow().isoformat() + "Z",
+        ip_address=ip_catalog,
+        echo=echo,
+        path_echo=path_echo,
+    )
 
 
-@app.get("/health")
+@app.get("/health", response_model=Health)
 def get_health_no_path(echo: Optional[str] = Query(None)):
     return make_health(echo=echo)
 
 
-@app.get("/health/{path_echo}")
+@app.get("/health/{path_echo}", response_model=Health)
 def get_health_with_path(path_echo: str = Path(...), echo: Optional[str] = Query(None)):
     return make_health(echo=echo, path_echo=path_echo)
 
 
-# ---------------------------------------------------------------------
-# Utility: normalize DB rows
-# ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Utility: normalize DB rows for CatalogRead
+# -----------------------------------------------------------------------------
 def normalize_catalog_row(row: dict) -> dict:
+    """
+    Convert sets/lists in DB row to comma-separated strings for Pydantic.
+    Adjusts fields like 'vibes', 'activities', 'food' if they come back as list/set.
+    """
     for field in ["vibes", "activities", "food"]:
         if field in row and isinstance(row[field], (set, list)):
             row[field] = ", ".join(sorted(row[field]))
     return row
 
 
-# ---------------------------------------------------------------------
-# CREATE CATALOG
-# ---------------------------------------------------------------------
-@app.post("/catalogs", status_code=201)
-def create_catalog(catalog):
+# -----------------------------------------------------------------------------
+# JWT + Security (Req 3)
+# -----------------------------------------------------------------------------
+security = HTTPBearer(auto_error=False)
+AUTH_JWT_SECRET = os.environ.get("AUTH_JWT_SECRET", "dev-secret-change-me")
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+):
+    """
+    Extract and verify a TripSpark JWT from the Authorization: Bearer <token> header.
+    This expects tokens issued by tripspark-auth using the same AUTH_JWT_SECRET.
+    """
+    if credentials is None:
+        # No Authorization header / not Bearer
+        raise HTTPException(status_code=403, detail="Not authenticated")
+
+    token = credentials.credentials  # just the token, no "Bearer " text
+    try:
+        payload = jwt.decode(token, AUTH_JWT_SECRET, algorithms=["HS256"])
+        return payload
+    except Exception:
+        # Could log details here if you want
+        raise HTTPException(status_code=403, detail="Not authenticated")
+
+
+@app.get("/secure-catalog-ping")
+def secure_catalog_ping(user: Dict = Depends(get_current_user)):
+    """
+    Simple secured endpoint to demonstrate:
+    - Microservice receives JWT from tripspark-auth
+    - Validates using AUTH_JWT_SECRET
+    - Returns decoded user info
+    """
+    return {
+        "message": "Secure Catalog endpoint OK",
+        "user": user,
+    }
+
+
+# -----------------------------------------------------------------------------
+# Create Catalog
+# -----------------------------------------------------------------------------
+@app.post("/catalogs", response_model=CatalogRead, status_code=201)
+def create_catalog(catalog: CatalogCreate):
     cnx = cursor = None
     try:
         cnx = get_connection()
@@ -100,10 +135,12 @@ def create_catalog(catalog):
 
         insert_query = """
         INSERT INTO catalog 
-        (poi, city, country, currency, latitude, longitude, rating,
-         description, spending, budget, vibes, activities, food,
-         best_season, trip_days, nearest_airport, transport,
-         accessibility, direction)
+        (
+            poi, city, country, currency, latitude, longitude, rating,
+            description, spending, budget, vibes, activities, food,
+            best_season, trip_days, nearest_airport, transport,
+            accessibility, direction
+        )
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """
 
@@ -132,13 +169,20 @@ def create_catalog(catalog):
         cursor.execute(insert_query, values)
         cnx.commit()
 
-        cursor.execute("SELECT * FROM catalog WHERE poi = %s", (catalog.poi.lower().strip(),))
+        cursor.execute(
+            "SELECT * FROM catalog WHERE poi = %s",
+            (catalog.poi.lower().strip(),),
+        )
         row = cursor.fetchone()
-        return normalize_catalog_row(row)
+        row = normalize_catalog_row(row)
+        return CatalogRead(**row)
 
     except mysql.connector.Error as err:
         if err.errno == 1062:
-            raise HTTPException(status_code=400, detail=f"The location {catalog.poi} already exists")
+            raise HTTPException(
+                status_code=400,
+                detail=f"The location {catalog.poi} already exists",
+            )
         raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
 
     finally:
@@ -148,10 +192,10 @@ def create_catalog(catalog):
             cnx.close()
 
 
-# ---------------------------------------------------------------------
-# LIST / FILTER CATALOGS
-# ---------------------------------------------------------------------
-@app.get("/catalogs")
+# -----------------------------------------------------------------------------
+# List / Filter Catalogs
+# -----------------------------------------------------------------------------
+@app.get("/catalogs", response_model=List[CatalogRead])
 def list_catalogs(
     city: Optional[str] = Query(None),
     country: Optional[str] = Query(None),
@@ -171,7 +215,7 @@ def list_catalogs(
         cursor = cnx.cursor(dictionary=True)
 
         query = "SELECT * FROM catalog WHERE 1=1"
-        params = {}
+        params: Dict[str, object] = {}
 
         if city:
             query += " AND city = %(city)s"
@@ -179,27 +223,56 @@ def list_catalogs(
         if country:
             query += " AND country = %(country)s"
             params["country"] = country.lower().strip()
+        if best_season:
+            query += " AND best_season = %(best_season)s"
+            params["best_season"] = best_season.lower().strip()
+        if transport:
+            query += " AND transport = %(transport)s"
+            params["transport"] = transport.lower().strip()
         if rating_avg is not None:
             query += " AND rating >= %(rating_avg)s"
             params["rating_avg"] = rating_avg
+        if activities:
+            query += " AND activities LIKE %(activities)s"
+            params["activities"] = f"%{activities.lower().strip()}%"
+        if accessibility:
+            query += " AND accessibility LIKE %(accessibility)s"
+            params["accessibility"] = f"%{accessibility.lower().strip()}%"
+
         if vibes:
             vibes_list = [v.strip().lower() for v in vibes.split(",") if v.strip()]
             if vibes_list:
-                conditions = " OR ".join([f"vibes LIKE %({i})s" for i in range(len(vibes_list))])
-                query += f" AND ({conditions})"
+                vibes_conditions = " OR ".join(
+                    [f"vibes LIKE %({i})s" for i in range(len(vibes_list))]
+                )
+                query += f" AND ({vibes_conditions})"
                 for i, v in enumerate(vibes_list):
                     params[str(i)] = f"%{v}%"
+
+        if food:
+            food_list = [f.strip().lower() for f in food.split(",") if f.strip()]
+            if food_list:
+                food_conditions = " OR ".join(
+                    [f"food LIKE %({100 + i})s" for i in range(len(food_list))]
+                )
+                query += f" AND ({food_conditions})"
+                for i, f_val in enumerate(food_list):
+                    params[str(100 + i)] = f"%{f_val}%"
+
+        if budget is not None:
+            query += " AND budget <= %(budget)s"
+            params["budget"] = budget
+
         if poi:
             query += " AND poi LIKE %(poi)s"
             params["poi"] = f"%{poi.lower().strip()}%"
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
-
         if not rows:
-            raise HTTPException(status_code=404, detail="No results")
+            raise HTTPException(status_code=404, detail="No matching catalogs found")
 
-        return [normalize_catalog_row(row) for row in rows]
+        return [CatalogRead(**normalize_catalog_row(row)) for row in rows]
 
     finally:
         if cursor:
@@ -208,10 +281,10 @@ def list_catalogs(
             cnx.close()
 
 
-# ---------------------------------------------------------------------
-# GET SINGLE CATALOG
-# ---------------------------------------------------------------------
-@app.get("/catalogs/{poi}")
+# -----------------------------------------------------------------------------
+# Get Single Catalog
+# -----------------------------------------------------------------------------
+@app.get("/catalogs/{poi}", response_model=CatalogRead)
 def get_catalog(poi: str):
     cnx = cursor = None
     try:
@@ -220,11 +293,13 @@ def get_catalog(poi: str):
 
         cursor.execute("SELECT * FROM catalog WHERE poi = %s", (poi.lower().strip(),))
         row = cursor.fetchone()
-
         if not row:
-            raise HTTPException(status_code=404, detail="Catalog not found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Catalog with location {poi} not found",
+            )
 
-        return normalize_catalog_row(row)
+        return CatalogRead(**normalize_catalog_row(row))
 
     finally:
         if cursor:
@@ -233,36 +308,40 @@ def get_catalog(poi: str):
             cnx.close()
 
 
-# ---------------------------------------------------------------------
-# UPDATE CATALOG
-# ---------------------------------------------------------------------
-@app.patch("/catalogs/{poi}")
-def update_catalog(poi: str, update):
+# -----------------------------------------------------------------------------
+# Update Catalog
+# -----------------------------------------------------------------------------
+@app.patch("/catalogs/{poi}", response_model=CatalogRead)
+def update_catalog(poi: str, update: CatalogUpdate):
     cnx = cursor = None
     try:
         cnx = get_connection()
         cursor = cnx.cursor(dictionary=True)
 
         updates = update.model_dump(exclude_unset=True)
-
         if not updates:
-            raise HTTPException(status_code=400, detail="No fields provided")
+            raise HTTPException(status_code=400, detail="No fields provided for update")
 
-        for key, val in updates.items():
-            if isinstance(val, str):
-                updates[key] = val.lower().strip()
+        # normalize string values
+        for key, value in updates.items():
+            if isinstance(value, str):
+                updates[key] = value.lower().strip()
 
-        set_clause = ", ".join([f"{k} = %s" for k in updates.keys()])
+        set_clause = ", ".join([f"{key} = %s" for key in updates.keys()])
         values = list(updates.values()) + [poi.lower().strip()]
 
         query = f"UPDATE catalog SET {set_clause} WHERE poi = %s"
         cursor.execute(query, values)
         cnx.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Catalog with location {poi} not found",
+            )
 
         cursor.execute("SELECT * FROM catalog WHERE poi = %s", (poi.lower().strip(),))
         row = cursor.fetchone()
-
-        return normalize_catalog_row(row)
+        return CatalogRead(**normalize_catalog_row(row))
 
     finally:
         if cursor:
@@ -271,19 +350,22 @@ def update_catalog(poi: str, update):
             cnx.close()
 
 
-# ---------------------------------------------------------------------
-# DELETE CATALOG
-# ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Delete Catalog
+# -----------------------------------------------------------------------------
 @app.delete("/catalogs/{poi}", status_code=204)
 def delete_catalog(poi: str):
     cnx = cursor = None
     try:
         cnx = get_connection()
         cursor = cnx.cursor()
-
         cursor.execute("DELETE FROM catalog WHERE poi = %s", (poi.lower().strip(),))
         cnx.commit()
-
+        if cursor.rowcount == 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Catalog with location {poi} not found",
+            )
     finally:
         if cursor:
             cursor.close()
@@ -291,55 +373,18 @@ def delete_catalog(poi: str):
             cnx.close()
 
 
-# ---------------------------------------------------------------------
-# NEW: JWT-PROTECTED + PUB/SUB TRIGGER ENDPOINT
-# ---------------------------------------------------------------------
-@app.get("/secure-catalog-ping")
-def secure_catalog_ping(authorization: str = Header(None)):
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=403, detail="Not authenticated")
-
-    token = authorization.split(" ", 1)[1]
-
-    try:
-        decoded = jwt.decode(
-            token,
-            AUTH_JWT_SECRET,
-            algorithms=["HS256"],
-            options={"require": ["sub", "email", "exp"]},
-        )
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
-
-    # ------------------------ NEW: PUBLISH EVENT ------------------------
-    event = {
-        "event_type": "CATALOG_SECURE_PING",
-        "source": "catalog-service",
-        "user_email": decoded.get("email"),
-        "user_sub": decoded.get("sub"),
-        "iss": decoded.get("iss"),
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-    }
-
-    publisher.publish(PUBSUB_TOPIC, data=json.dumps(event).encode("utf-8"))
-    # -------------------------------------------------------------------
-
-    return {"message": "Secure Catalog endpoint OK", "user": decoded}
-
-
-# ---------------------------------------------------------------------
-# ROOT
-# ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Root
+# -----------------------------------------------------------------------------
 @app.get("/")
 def root():
-    return {"message": "Welcome to TripSpark Catalog API"}
+    return {"message": "Welcome to the TripSpark - Catalog API. See /docs for OpenAPI UI."}
 
 
-# ---------------------------------------------------------------------
-# RUN SERVER
-# ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Run
+# -----------------------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("main3:app", host="0.0.0.0", port=port, reload=True)
