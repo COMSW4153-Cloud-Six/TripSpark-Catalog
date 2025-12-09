@@ -33,7 +33,7 @@
     
     python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 #run main.py
 
-### 2. In the web go to http://34.139.65.200:8000/docs#/ and try out all the APIs to check MySQL connectivity
+### 2. In the web go to http://<EXTERNAL_IP of catalog VM>:8000/docs#/ and try out all the APIs to check MySQL connectivity
 
 <img width="1461" height="747" alt="image" src="https://github.com/user-attachments/assets/04756de6-799f-4fd5-9a74-aeb64502947a" />
 
