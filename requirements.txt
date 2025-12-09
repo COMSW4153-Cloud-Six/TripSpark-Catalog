@@ -17,3 +17,4 @@ cloud-sql-python-connector[mysql]
 PyMySQL
 sqlalchemy
 PyJWT
+google-cloud-pubsub
