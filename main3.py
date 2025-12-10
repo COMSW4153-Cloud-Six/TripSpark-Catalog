@@ -349,6 +349,31 @@ def update_catalog(poi: str, update: CatalogUpdate):
         if cnx and cnx.is_connected():
             cnx.close()
 
+# -------------------------------------------------------------------------
+# Publish Event to Pub/Sub (Req 4)
+# -------------------------------------------------------------------------
+from google.cloud import pubsub_v1
+import json
+
+PROJECT_ID = "long-way-475401-b6"
+TOPIC_ID = "tripspark-events"
+
+@app.post("/event-test")
+def event_test():
+    """Catalog microservice emits an event -> Cloud Run function triggers."""
+    publisher = pubsub_v1.PublisherClient()
+    topic_path = publisher.topic_path(PROJECT_ID, TOPIC_ID)
+
+    event_payload = {
+        "source": "catalog-microservice",
+        "event_type": "CATALOG_TEST",
+        "message": "Hello from Catalog VM!"
+    }
+
+    data = json.dumps(event_payload).encode("utf-8")
+    publisher.publish(topic_path, data)
+
+    return {"status": "event published", "payload": event_payload}
 
 # -----------------------------------------------------------------------------
 # Delete Catalog
