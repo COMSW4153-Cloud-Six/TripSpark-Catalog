@@ -180,23 +180,54 @@ Payload: {"event_type":"TEST","source":"catalog"}
 
 ---
 
-# Requirement 4 — Publish Pub/Sub Event → Cloud Function Processes It
+Requirement 4
+Trigger the Cloud Function from a Microservice
 
-We manually publish an event from Cloud Shell or microservice.
+The Catalog microservice publishes events to Pub/Sub using:
 
-### **Publish a Pub/Sub message:**
+POST /event-test
 
-```bash
-gcloud pubsub topics publish tripspark-events \
-  --message='{"event_type":"DEMO_TRIGGER","source":"catalog","note":"Sprint 3 demo"}'
-```
 
-### Expected Cloud Run Logs Output
+The Cloud Run function (tripspark-event-handler) processes these events.
 
-```
-Function triggered by Pub/Sub!
-Payload: {"event_type":"DEMO_TRIGGER","source":"catalog","note":"Sprint 3 demo"}
-```
+Step 1: Trigger Event from Swagger UI
+
+In Swagger:
+
+Select POST /event-test and execute with:
+
+Hello from Catalog VM!
+
+
+The response should be:
+
+{
+  "status": "event published",
+  "payload": {
+    "source": "catalog-microservice",
+    "event_type": "CATALOG_TEST",
+    "message": "Hello from Catalog VM!"
+  }
+}
+
+Step 2: Verify Cloud Function Trigger via Logs
+
+In Cloud Shell:
+
+gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="tripspark-event-handler"' \
+  --limit=20 \
+  --format="table(timestamp, textPayload)"
+
+
+Expected log output:
+
+=== TripSpark Event Received (HTTP-style) ===
+Cloud Function TRIGGERED by Pub/Sub!
+Payload: {'event_type': 'CATALOG_TEST', 'source': 'catalog-microservice', 'message': 'Hello from Catalog VM!'}
+
+
+This completes Requirement 4.
 
 ---
 
