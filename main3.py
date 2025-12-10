@@ -348,32 +348,61 @@ def update_catalog(poi: str, update: CatalogUpdate):
             cursor.close()
         if cnx and cnx.is_connected():
             cnx.close()
-
-# -------------------------------------------------------------------------
-# Publish Event to Pub/Sub (Req 4)
-# -------------------------------------------------------------------------
-from google.cloud import pubsub_v1
+# at the top of main3.py, add these imports:
 import json
+from fastapi import FastAPI, HTTPException, Depends, Header, Query, Path  # you already import some; just ensure HTTPException, Query, Path are there
+from google.cloud import pubsub_v1
 
-PROJECT_ID = "long-way-475401-b6"
-TOPIC_ID = "tripspark-events"
+# ...
 
+# -------------------------------------------------------------------------
+# Pub/Sub config (put this near DB_CONFIG or under it)
+# -------------------------------------------------------------------------
+PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "long-way-475401-b6")
+TOPIC_ID = os.environ.get("TRIPSPARK_EVENTS_TOPIC", "tripspark-events")
+
+publisher = pubsub_v1.PublisherClient()
+topic_path = publisher.topic_path(PROJECT_ID, TOPIC_ID)
+
+# -------------------------------------------------------------------------
+# Event test endpoint for Req 4
+# -------------------------------------------------------------------------
 @app.post("/event-test")
-def event_test():
-    """Catalog microservice emits an event -> Cloud Run function triggers."""
-    publisher = pubsub_v1.PublisherClient()
-    topic_path = publisher.topic_path(PROJECT_ID, TOPIC_ID)
+def event_test(message: str = Query("Hello from Catalog VM!")):
+    """
+    Simple endpoint to demonstrate:
+    - Catalog microservice publishes an event to Pub/Sub topic `tripspark-events`
+    - tripspark-event-handler Cloud Run is triggered by that topic.
+    """
 
-    event_payload = {
+    payload = {
         "source": "catalog-microservice",
         "event_type": "CATALOG_TEST",
-        "message": "Hello from Catalog VM!"
+        "message": message,
     }
 
-    data = json.dumps(event_payload).encode("utf-8")
-    publisher.publish(topic_path, data)
+    data = json.dumps(payload).encode("utf-8")
 
-    return {"status": "event published", "payload": event_payload}
+    try:
+        future = publisher.publish(
+            topic_path,
+            data,
+            content_type="application/json",
+        )
+        message_id = future.result(timeout=10)
+    except Exception as e:
+        # Make failures VERY obvious
+        print(f"[CATALOG EVENT-TEST] ERROR publishing to Pub/Sub: {e}")
+        raise HTTPException(status_code=500, detail="Failed to publish event to Pub/Sub")
+
+    print(f"[CATALOG EVENT-TEST] Published message_id={message_id}, payload={payload}")
+
+    return {
+        "status": "event published",
+        "topic": topic_path,
+        "message_id": message_id,
+        "payload": payload,
+    }
 
 # -----------------------------------------------------------------------------
 # Delete Catalog
