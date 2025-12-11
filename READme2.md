@@ -182,6 +182,13 @@ Payload: {"event_type":"TEST","source":"catalog"}
 
 Requirement 4
 Trigger the Cloud Function from a Microservice
+run this: 
+cd ~/TripSpark-Catalog/TripSpark-Catalog
+source venv/bin/activate
+
+export AUTH_JWT_SECRET="dev-secret-change-me"
+export GCP_PROJECT_ID="long-way-475401-b6"
+export TRIPSPARK_EVENTS_TOPIC="tripspark-events"
 
 The Catalog microservice publishes events to Pub/Sub using:
 
