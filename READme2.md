@@ -60,6 +60,8 @@ https://tripspark-auth-817898523355.us-central1.run.app/
 4. Copy the TripSpark JWT (used in Req 2).
 
 ---
+<img width="1817" height="932" alt="image" src="https://github.com/user-attachments/assets/bfe19139-b2b8-4642-b73a-99f2111f5591" />
+
 
 # Requirement 2 — JWT Validation in Catalog Microservice
 
@@ -137,6 +139,7 @@ Expected success response:
 ```
 403 Not authenticated
 ```
+<img width="1243" height="833" alt="image" src="https://github.com/user-attachments/assets/a5ccd696-7602-4956-b2c9-0a23e96ac11b" />
 
 ---
 
@@ -181,6 +184,7 @@ Payload: {"event_type":"TEST","source":"catalog"}
 ```
 
 ---
+<img width="1836" height="906" alt="image" src="https://github.com/user-attachments/assets/377308e2-49fc-48e6-8704-f88d6e029df1" />
 
 Requirement 4
 Trigger the Cloud Function from a Microservice
