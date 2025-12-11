@@ -244,6 +244,7 @@ Payload: {'event_type': 'CATALOG_TEST', 'source': 'catalog-microservice', 'messa
 This completes Requirement 4.
 
 ---
+<img width="1241" height="887" alt="image" src="https://github.com/user-attachments/assets/b3bad977-e6d7-4b49-b81a-3a2b2d5b8ac0" />
 
 
 
