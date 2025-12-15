@@ -35,7 +35,7 @@
 
 ### 2. In the web go to http://<EXTERNAL_IP of catalog VM>:8000/docs#/ and try out all the APIs to check MySQL connectivity
 
-<img width="1461" height="747" alt="image" src="https://github.com/user-attachments/assets/04756de6-799f-4fd5-9a74-aeb64502947a" />
+<img width="1468" height="893" alt="catalog" src="https://github.com/user-attachments/assets/cd8f3e78-bafc-4d19-81f9-684ecb080b1d" />
 
 Watch Demo - https://www.youtube.com/watch?v=DaznV2TLKHs
 
