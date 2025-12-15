@@ -8,7 +8,7 @@
   pip install -r requirements.txt
 
 ### 2. Run main.py
-  python3 main.py
+  python3 main3.py
 
 ### 3. In the web go to /docs and try out GET catalogs to check MySQL connectivity
 
@@ -31,7 +31,7 @@
     
     source venv/bin/activate
     
-    python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 #run main.py
+    python3 -m uvicorn main3:app --host 0.0.0.0 --port 8000 #run main3.py
 
 ### 2. In the web go to http://<EXTERNAL_IP of catalog VM>:8000/docs#/ and try out all the APIs to check MySQL connectivity
 
