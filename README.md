@@ -37,6 +37,6 @@
 
 <img width="1468" height="893" alt="catalog" src="https://github.com/user-attachments/assets/cd8f3e78-bafc-4d19-81f9-684ecb080b1d" />
 
-Watch Demo - https://www.youtube.com/watch?v=DaznV2TLKHs
+Watch Demo - [https://www.youtube.com/watch?v=DaznV2TLKHs](https://youtu.be/9x4GENn0JDs)
 
 
